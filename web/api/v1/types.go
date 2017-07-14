@@ -5,7 +5,7 @@ import "github.com/prometheus/common/model"
 type queryRes struct {
 	Status string `json:"status"`
 	Data   struct {
-		ResultType int `json:"resultType"`
+		ResultType string `json:"resultType"`
 		/*
 			ResultType string `json:"resultType"`
 			Result     []struct {

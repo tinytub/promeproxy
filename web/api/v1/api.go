@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -236,76 +237,42 @@ func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
+
 	/*
-		expr, err := promql.ParseExpr(r.FormValue("query"))
-		if err != nil {
-			return nil, &apiError{errorBadData, err}
-		}
-		if expr.Type() != model.ValVector && expr.Type() != model.ValScalar {
-			return nil, &apiError{errorBadData, fmt.Errorf("invalid expression type %q for range query, must be scalar or instant vector", documentedType(expr.Type()))}
-		}
+		// 这个可以取出__address__和remote prometheus的关系。
+			expr, err := promql.ParseExpr(r.FormValue("query"))
+			if err != nil {
+				return nil, &apiError{errorBadData, err}
+			}
+			if expr.Type() != model.ValVector && expr.Type() != model.ValScalar {
+				return nil, &apiError{errorBadData, fmt.Errorf("invalid expression type %q for range query, must be scalar or instant vector", documentedType(expr.Type()))}
+			}
 
-		thash := api.getTargets()
-		//target与prometheus服务器的分配
-		es := &promql.EvalStmt{
-			Expr:     expr,
-			Start:    start,
-			End:      end,
-			Interval: time.Duration(60 * time.Second),
-		}
+			thash := api.getTargets()
+			//target与prometheus服务器的分配
+			es := &promql.EvalStmt{
+				Expr:     expr,
+				Start:    start,
+				End:      end,
+				Interval: time.Duration(60 * time.Second),
+			}
 
-		matchers, err := populateIterators(ctx, es)
-		for _, v := range matchers {
-			for _, n := range thash.RawTargets {
-				if v.Match(n.Address) {
-					fmt.Printf("match!! mod: %d, address: %s\n", n.Mod, n.Address)
-					//TODO 从表里查 mod:remoteprometheus对应关系
-					//读出来，插入到新的list中作为需要生成的客户端列表留用
+			matchers, err := populateIterators(ctx, es)
+			for _, v := range matchers {
+				for _, n := range thash.RawTargets {
+					if v.Match(n.Address) {
+						fmt.Printf("match!! mod: %d, address: %s\n", n.Mod, n.Address)
+						//TODO 从表里查 mod:remoteprometheus对应关系
+						//读出来，插入到新的list中作为需要生成的客户端列表留用
+					}
 				}
 			}
-		}
 	*/
+
 	promtargets := api.getPromTargets()
-	//var finalres *queryRes
-	//var finalres model.Matrix
-
-	//	sampleStreams := map[model.Fingerprint]*sampleStream{}
 	mat := matrix{}
-	//wait group 并发执行吧
 
-	for _, t := range promtargets {
-
-		url := "http://" + string(t) + r.RequestURI
-		client, _ := utils.NewClientForTimeOut()
-		request, err := http.NewRequest("GET", url, strings.NewReader(""))
-
-		if err != nil {
-			return nil, &apiError{errorBadData, err}
-		}
-		resp, err := client.Do(request)
-		if resp != nil && resp.Body != nil {
-			defer func() {
-				io.Copy(ioutil.Discard, resp.Body)
-				resp.Body.Close()
-			}()
-		}
-		var res *queryRes
-
-		body, err := ioutil.ReadAll(resp.Body)
-		err = json.Unmarshal(body, &res)
-		//finalres.Data.Result = append(finalres.Data.Result, res.Data.Result...)
-		//finalres = append(finalres, res.Data.Matrix...)
-		//fmt.Println(res.Data.matrix)
-		/*
-			for _, v := range res.Data.Result {
-				for k1, v1 := range v.Metric {
-					fmt.Println(k1)
-					fmt.Println(v1)
-				}
-			}
-		*/
-		mat = append(mat, res.Data.Result...)
-	}
+	api.proxyReq(r, promtargets, &mat)
 
 	final := mat.value()
 
@@ -313,6 +280,42 @@ func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 		ResultType: final.Type(),
 		Result:     final,
 	}, nil
+}
+
+func (api *API) proxyReq(r *http.Request, promtargets []model.LabelValue, mat *matrix) {
+	var wg sync.WaitGroup
+	for _, t := range promtargets {
+		fmt.Println(t)
+		wg.Add(1)
+		go func(r *http.Request, l model.LabelValue) {
+			url := "http://" + string(l) + r.RequestURI
+			client, _ := utils.NewClientForTimeOut()
+			request, _ := http.NewRequest("GET", url, strings.NewReader(""))
+			fmt.Println(url)
+
+			resp, err := client.Do(request)
+			if err != nil {
+				fmt.Println(err)
+			}
+			if resp != nil && resp.Body != nil {
+				defer func() {
+					io.Copy(ioutil.Discard, resp.Body)
+					resp.Body.Close()
+				}()
+			}
+			var res *queryRes
+
+			body, err := ioutil.ReadAll(resp.Body)
+			err = json.Unmarshal(body, &res)
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			*mat = append(*mat, res.Data.Result...)
+			wg.Done()
+		}(r, t)
+	}
+	wg.Wait()
 }
 
 /*
