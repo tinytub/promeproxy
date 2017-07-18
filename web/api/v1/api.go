@@ -280,7 +280,6 @@ func (api *API) labelValues(r *http.Request) (interface{}, *apiError) {
 	}
 
 	bodys := api.proxyReq(r)
-	//var wg sync.WaitGroup
 	var data model.LabelValues
 	for _, body := range bodys {
 		var res *labalVals
@@ -292,7 +291,6 @@ func (api *API) labelValues(r *http.Request) (interface{}, *apiError) {
 	}
 	fData := api.removeDuplicate(data)
 
-	//data 改type 价格len方法
 	sort.Sort(fData)
 
 	return fData, nil
@@ -539,7 +537,7 @@ func documentedType(t model.ValueType) string {
 	}
 }
 
-//去重 可能效率不太高
+//Duplicate slice, low performence
 func (api *API) removeDuplicate(data model.LabelValues) model.LabelValues {
 	seen := make(model.LabelValues, 0, len(data))
 slice:
@@ -558,6 +556,7 @@ slice:
 	return data
 }
 
+/*
 //取query和queryRange中的label
 func populateIterators(ctx context.Context, s *promql.EvalStmt) (metric.LabelMatchers, error) {
 	var matchers metric.LabelMatchers
@@ -576,7 +575,6 @@ func populateIterators(ctx context.Context, s *promql.EvalStmt) (metric.LabelMat
 	return matchers, fmt.Errorf("no Matcheres found")
 }
 
-/*
 func (api *API) targetRelation() {
 		// 这个可以取出__address__和remote prometheus的关系。
 			expr, err := promql.ParseExpr(r.FormValue("query"))

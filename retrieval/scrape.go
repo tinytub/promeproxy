@@ -1,3 +1,16 @@
+// Copyright 2013 The Prometheus Authors
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package retrieval
 
 import (
@@ -89,20 +102,9 @@ func (sp *scrapePool) sync(targets []*Target) {
 		}
 	}
 
-	//var wg sync.WaitGroup
-
 	// Stop and remove old targets and scraper loops.
 	for hash := range sp.targets {
 		if _, ok := uniqueTargets[hash]; !ok {
-			//wg.Add(1)
-			/*
-				go func(l loop) {
-					l.stop()
-					wg.Done()
-				}(sp.loops[hash])
-
-				delete(sp.loops, hash)
-			*/
 			delete(sp.targets, hash)
 		}
 	}

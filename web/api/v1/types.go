@@ -70,22 +70,7 @@ type queryRes struct {
 	Status string `json:"status"`
 	Data   struct {
 		ResultType string `json:"resultType"`
-		/*
-			ResultType string `json:"resultType"`
-			Result     []struct {
-				Metric struct {
-					Instance string `json:"instance"`
-					Job      string `json:"job"`
-					Service  string `json:"service"`
-					URI      string `json:"uri"`
-				} `json:"metric"`
-				Values []struct {
-					Num0 int    `json:"0"`
-					Num1 string `json:"1"`
-				} `json:"values"`
-			} `json:"result"`
-		*/
-		//model.Matrix
+
 		Result matrix `json:"result"`
 	} `json:"data"`
 }

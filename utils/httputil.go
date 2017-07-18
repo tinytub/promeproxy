@@ -15,7 +15,6 @@ func NewClientForTimeOut() (*http.Client, error) {
 	timeout := time.Duration(3 * time.Second)
 	var rt http.RoundTripper = NewDeadlineRoundTripper(timeout)
 
-	// Return a new client with the configured round tripper.
 	return NewClient(rt), nil
 }
 
@@ -30,7 +29,7 @@ func NewDeadlineRoundTripper(timeout time.Duration) http.RoundTripper {
 				return nil, err
 			}
 
-			//TODO 超时打点
+			//TODO if timeout, set a metric to prometheus
 			if err = c.SetDeadline(start.Add(timeout)); err != nil {
 				c.Close()
 				return nil, err
