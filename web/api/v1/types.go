@@ -30,12 +30,9 @@ type targetVals struct {
 	} `json:"data"`
 }
 
-// Target has the information for one target.
 type Target struct {
-	// Labels before any processing.
 	DiscoveredLabels model.LabelSet `json:"discoveredLabels"`
-	// Any labels that are added to this target and its metrics.
-	Labels model.LabelSet `json:"labels"`
+	Labels           model.LabelSet `json:"labels"`
 
 	ScrapeURL string `json:"scrapeUrl"`
 
@@ -44,7 +41,6 @@ type Target struct {
 	Health     retrieval.TargetHealth `json:"health"`
 }
 
-// TargetDiscovery has all the active targets.
 type TargetDiscovery struct {
 	ActiveTargets []*Target `json:"activeTargets"`
 }
@@ -56,12 +52,10 @@ type alertManagerVals struct {
 	Status string `json:"status"`
 }
 
-// AlertmanagerDiscovery has all the active Alertmanagers.
 type AlertmanagerDiscovery struct {
 	ActiveAlertmanagers []*AlertmanagerTarget `json:"activeAlertmanagers"`
 }
 
-// AlertmanagerTarget has info on one AM.
 type AlertmanagerTarget struct {
 	URL string `json:"url"`
 }
@@ -75,14 +69,11 @@ type queryRes struct {
 	} `json:"data"`
 }
 
-// sampleStream is a stream of Values belonging to an attached COWMetric.
 type sampleStream struct {
 	Metric model.Metric       `json:"metric"`
 	Values []model.SamplePair `json:"values"`
 }
 
-// matrix is a slice of SampleStreams that implements sort.Interface and
-// has a String method.
 type matrix []*sampleStream
 
 /*

@@ -1,6 +1,5 @@
 package v1
 
-// API can register a set of endpoints in a router and handle
 import (
 	"context"
 	"crypto/md5"
@@ -73,7 +72,7 @@ type response struct {
 	Error     string      `json:"error,omitempty"`
 }
 
-// Enables cross-site script calls.
+// 跨域
 func setCORS(w http.ResponseWriter) {
 	for h, v := range corsHeaders {
 		w.Header().Set(h, v)
@@ -82,14 +81,12 @@ func setCORS(w http.ResponseWriter) {
 
 type apiFunc func(r *http.Request) (interface{}, *apiError)
 
-// them using the provided storage and query engine.
 type API struct {
 	targetRetriever targetRetriever
 
 	now func() model.Time
 }
 
-// NewAPI returns an initialized API type.
 func NewAPI(tr targetRetriever) *API {
 	return &API{
 		targetRetriever: tr,
@@ -97,7 +94,7 @@ func NewAPI(tr targetRetriever) *API {
 	}
 }
 
-// Register the API's endpoints in the given router.
+// 注册API
 func (api *API) Register(r *route.Router) {
 	instr := func(name string, f apiFunc) http.HandlerFunc {
 		hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -194,8 +191,7 @@ func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 		return nil, &apiError{errorBadData, err}
 	}
 
-	// For safety, limit the number of returned points per timeseries.
-	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
+	// 限制返回数据点的数量。
 	if end.Sub(start)/step > 11000 {
 		err := errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
 		return nil, &apiError{errorBadData, err}
@@ -524,8 +520,8 @@ func sum64(hash [md5.Size]byte) uint64 {
 	return s
 }
 
-// documentedType returns the internal type to the equivalent
-// user facing terminology as defined in the documentation.
+/*
+//返回内部类型
 func documentedType(t model.ValueType) string {
 	switch t.String() {
 	case "vector":
@@ -536,8 +532,9 @@ func documentedType(t model.ValueType) string {
 		return t.String()
 	}
 }
+*/
 
-//Duplicate slice, low performence
+// 去重，效率可能比较低
 func (api *API) removeDuplicate(data model.LabelValues) model.LabelValues {
 	seen := make(model.LabelValues, 0, len(data))
 slice:

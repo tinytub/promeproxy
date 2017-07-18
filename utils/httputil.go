@@ -29,7 +29,7 @@ func NewDeadlineRoundTripper(timeout time.Duration) http.RoundTripper {
 				return nil, err
 			}
 
-			//TODO if timeout, set a metric to prometheus
+			//TODO 超时打点
 			if err = c.SetDeadline(start.Add(timeout)); err != nil {
 				c.Close()
 				return nil, err
