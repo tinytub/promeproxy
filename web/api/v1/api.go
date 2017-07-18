@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -119,16 +120,14 @@ func (api *API) Register(r *route.Router) {
 	r.Get("/query", instr("query", api.query))
 	r.Get("/query_range", instr("query_range", api.queryRange))
 	log.Info("route registed")
-	/*
 
-		r.Get("/label/:name/values", instr("label_values", api.labelValues))
+	r.Get("/label/:name/values", instr("label_values", api.labelValues))
 
-		r.Get("/series", instr("series", api.series))
-		r.Del("/series", instr("drop_series", api.dropSeries))
+	r.Get("/series", instr("series", api.series))
+	r.Del("/series", instr("drop_series", api.dropSeries))
 
-		r.Get("/targets", instr("targets", api.targets))
-		r.Get("/alertmanagers", instr("alertmanagers", api.alertmanagers))
-	*/
+	r.Get("/targets", instr("targets", api.targets))
+	r.Get("/alertmanagers", instr("alertmanagers", api.alertmanagers))
 }
 
 type queryData struct {
@@ -165,30 +164,6 @@ func (api *API) query(r *http.Request) (interface{}, *apiError) {
 	}
 	log.Info(r.FormValue("query"), ts)
 
-	/*
-			qry, err := api.QueryEngine.NewInstantQuery(r.FormValue("query"), ts)
-
-			if err != nil {
-				return nil, &apiError{errorBadData, err}
-			}
-
-			res := qry.Exec(ctx)
-			if res.Err != nil {
-				switch res.Err.(type) {
-				case promql.ErrQueryCanceled:
-					return nil, &apiError{errorCanceled, res.Err}
-				case promql.ErrQueryTimeout:
-					return nil, &apiError{errorTimeout, res.Err}
-				case promql.ErrStorage:
-					return nil, &apiError{errorInternal, res.Err}
-				}
-				return nil, &apiError{errorExec, res.Err}
-			}
-		return &queryData{
-			ResultType: res.Value.Type(),
-			Result:     res.Value,
-		}, nil
-	*/
 	return &queryData{
 		ResultType: 0,
 		Result:     nil,
@@ -238,41 +213,25 @@ func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 		defer cancel()
 	}
 
-	/*
-		// 这个可以取出__address__和remote prometheus的关系。
-			expr, err := promql.ParseExpr(r.FormValue("query"))
-			if err != nil {
-				return nil, &apiError{errorBadData, err}
-			}
-			if expr.Type() != model.ValVector && expr.Type() != model.ValScalar {
-				return nil, &apiError{errorBadData, fmt.Errorf("invalid expression type %q for range query, must be scalar or instant vector", documentedType(expr.Type()))}
-			}
-
-			thash := api.getTargets()
-			//target与prometheus服务器的分配
-			es := &promql.EvalStmt{
-				Expr:     expr,
-				Start:    start,
-				End:      end,
-				Interval: time.Duration(60 * time.Second),
-			}
-
-			matchers, err := populateIterators(ctx, es)
-			for _, v := range matchers {
-				for _, n := range thash.RawTargets {
-					if v.Match(n.Address) {
-						fmt.Printf("match!! mod: %d, address: %s\n", n.Mod, n.Address)
-						//TODO 从表里查 mod:remoteprometheus对应关系
-						//读出来，插入到新的list中作为需要生成的客户端列表留用
-					}
-				}
-			}
-	*/
-
-	promtargets := api.getPromTargets()
 	mat := matrix{}
 
-	api.proxyReq(r, promtargets, &mat)
+	bodys := api.proxyReq(r)
+
+	var wg sync.WaitGroup
+	for _, body := range bodys {
+		var res *queryRes
+		wg.Add(1)
+		go func(body []byte) {
+			err = json.Unmarshal(body, &res)
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			mat = append(mat, res.Data.Result...)
+			wg.Done()
+		}(body)
+	}
+	wg.Wait()
 
 	final := mat.value()
 
@@ -282,16 +241,16 @@ func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 	}, nil
 }
 
-func (api *API) proxyReq(r *http.Request, promtargets []model.LabelValue, mat *matrix) {
+func (api *API) proxyReq(r *http.Request) [][]byte {
+	promtargets := api.getPromTargets()
 	var wg sync.WaitGroup
+	var bodys [][]byte
 	for _, t := range promtargets {
-		fmt.Println(t)
 		wg.Add(1)
 		go func(r *http.Request, l model.LabelValue) {
 			url := "http://" + string(l) + r.RequestURI
 			client, _ := utils.NewClientForTimeOut()
 			request, _ := http.NewRequest("GET", url, strings.NewReader(""))
-			fmt.Println(url)
 
 			resp, err := client.Do(request)
 			if err != nil {
@@ -303,67 +262,40 @@ func (api *API) proxyReq(r *http.Request, promtargets []model.LabelValue, mat *m
 					resp.Body.Close()
 				}()
 			}
-			var res *queryRes
 
 			body, err := ioutil.ReadAll(resp.Body)
-			err = json.Unmarshal(body, &res)
-			if err != nil {
-				fmt.Println(err)
-			}
-
-			*mat = append(*mat, res.Data.Result...)
+			bodys = append(bodys, body)
 			wg.Done()
 		}(r, t)
 	}
 	wg.Wait()
+	return bodys
 }
 
-/*
-func mergeQueryData(is ...int) {
-	for i := 0; i < len(is); i++ {
-		fmt.Println(is[i])
-	}
-}
-*/
-
-//取query和queryRange中的label
-func populateIterators(ctx context.Context, s *promql.EvalStmt) (metric.LabelMatchers, error) {
-	var matchers metric.LabelMatchers
-	promql.Inspect(s.Expr, func(node promql.Node) bool {
-		switch n := node.(type) {
-		case *promql.VectorSelector:
-			log.Info("populate vectorselector")
-			matchers = n.LabelMatchers
-
-		case *promql.MatrixSelector:
-			log.Info("populate metrixSelector")
-			matchers = n.LabelMatchers
-		}
-		return true
-	})
-	return matchers, fmt.Errorf("no Matcheres found")
-}
-
-/*
 func (api *API) labelValues(r *http.Request) (interface{}, *apiError) {
 	name := route.Param(r.Context(), "name")
 
 	if !model.LabelNameRE.MatchString(name) {
 		return nil, &apiError{errorBadData, fmt.Errorf("invalid label name: %q", name)}
 	}
-	q, err := api.Storage.Querier()
-	if err != nil {
-		return nil, &apiError{errorExec, err}
-	}
-	defer q.Close()
 
-	vals, err := q.LabelValuesForLabelName(r.Context(), model.LabelName(name))
-	if err != nil {
-		return nil, &apiError{errorExec, err}
+	bodys := api.proxyReq(r)
+	//var wg sync.WaitGroup
+	var data model.LabelValues
+	for _, body := range bodys {
+		var res *labalVals
+		err := json.Unmarshal(body, &res)
+		if err != nil {
+			log.Error(err)
+		}
+		data = append(data, res.Data...)
 	}
-	sort.Sort(vals)
+	fData := api.removeDuplicate(data)
 
-	return vals, nil
+	//data 改type 价格len方法
+	sort.Sort(fData)
+
+	return fData, nil
 }
 
 func (api *API) series(r *http.Request) (interface{}, *apiError) {
@@ -372,26 +304,20 @@ func (api *API) series(r *http.Request) (interface{}, *apiError) {
 		return nil, &apiError{errorBadData, fmt.Errorf("no match[] parameter provided")}
 	}
 
-	var start model.Time
 	if t := r.FormValue("start"); t != "" {
 		var err error
-		start, err = parseTime(t)
+		_, err = parseTime(t)
 		if err != nil {
 			return nil, &apiError{errorBadData, err}
 		}
-	} else {
-		start = model.Earliest
 	}
 
-	var end model.Time
 	if t := r.FormValue("end"); t != "" {
 		var err error
-		end, err = parseTime(t)
+		_, err = parseTime(t)
 		if err != nil {
 			return nil, &apiError{errorBadData, err}
 		}
-	} else {
-		end = model.Latest
 	}
 
 	var matcherSets []metric.LabelMatchers
@@ -403,20 +329,23 @@ func (api *API) series(r *http.Request) (interface{}, *apiError) {
 		matcherSets = append(matcherSets, matchers)
 	}
 
-	q, err := api.Storage.Querier()
-	if err != nil {
-		return nil, &apiError{errorExec, err}
+	bodys := api.proxyReq(r)
+	//metrics := make([]model.Metric, 0, len(res))
+	data := make([]seriesVals, 0, len(bodys))
+	for _, body := range bodys {
+		var res seriesVals
+		err := json.Unmarshal(body, &res)
+		if err != nil {
+			log.Error(err)
+		}
+		data = append(data, res)
 	}
-	defer q.Close()
 
-	res, err := q.MetricsForLabelMatchers(r.Context(), start, end, matcherSets...)
-	if err != nil {
-		return nil, &apiError{errorExec, err}
-	}
-
-	metrics := make([]model.Metric, 0, len(res))
-	for _, met := range res {
-		metrics = append(metrics, met.Metric)
+	metrics := make([]model.Metric, 0, len(data))
+	for _, d := range data {
+		for _, met := range d.Data {
+			metrics = append(metrics, met)
+		}
 	}
 	return metrics, nil
 }
@@ -427,17 +356,15 @@ func (api *API) dropSeries(r *http.Request) (interface{}, *apiError) {
 		return nil, &apiError{errorBadData, fmt.Errorf("no match[] parameter provided")}
 	}
 
-	numDeleted := 0
-	for _, s := range r.Form["match[]"] {
-		matchers, err := promql.ParseMetricSelector(s)
+	bodys := api.proxyReq(r)
+	var numDeleted int
+	for _, body := range bodys {
+		var res seriesDelVals
+		err := json.Unmarshal(body, &res)
 		if err != nil {
-			return nil, &apiError{errorBadData, err}
+			log.Error(err)
 		}
-		n, err := api.Storage.DropMetricsForLabelMatchers(context.TODO(), matchers...)
-		if err != nil {
-			return nil, &apiError{errorExec, err}
-		}
-		numDeleted += n
+		numDeleted += res.Data.NumDeleted + numDeleted
 	}
 
 	res := struct {
@@ -448,70 +375,39 @@ func (api *API) dropSeries(r *http.Request) (interface{}, *apiError) {
 	return res, nil
 }
 
-// Target has the information for one target.
-type Target struct {
-	// Labels before any processing.
-	DiscoveredLabels model.LabelSet `json:"discoveredLabels"`
-	// Any labels that are added to this target and its metrics.
-	Labels model.LabelSet `json:"labels"`
-
-	ScrapeURL string `json:"scrapeUrl"`
-
-	LastError  string                 `json:"lastError"`
-	LastScrape time.Time              `json:"lastScrape"`
-	Health     retrieval.TargetHealth `json:"health"`
-}
-
-// TargetDiscovery has all the active targets.
-type TargetDiscovery struct {
-	ActiveTargets []*Target `json:"activeTargets"`
-}
-
 func (api *API) targets(r *http.Request) (interface{}, *apiError) {
-	targets := api.targetRetriever.Targets()
-	res := &TargetDiscovery{ActiveTargets: make([]*Target, len(targets))}
 
-	for i, t := range targets {
-		lastErrStr := ""
-		lastErr := t.LastError()
-		if lastErr != nil {
-			lastErrStr = lastErr.Error()
+	bodys := api.proxyReq(r)
+	var data []*Target
+	for _, body := range bodys {
+		var res targetVals
+		err := json.Unmarshal(body, &res)
+		if err != nil {
+			log.Error(err)
 		}
-
-		res.ActiveTargets[i] = &Target{
-			DiscoveredLabels: t.DiscoveredLabels(),
-			Labels:           t.Labels(),
-			ScrapeURL:        t.URL().String(),
-			LastError:        lastErrStr,
-			LastScrape:       t.LastScrape(),
-			Health:           t.Health(),
-		}
+		data = append(data, res.Data.ActiveTargets...)
 	}
+
+	res := &TargetDiscovery{ActiveTargets: data}
 
 	return res, nil
 }
 
-// AlertmanagerDiscovery has all the active Alertmanagers.
-type AlertmanagerDiscovery struct {
-	ActiveAlertmanagers []*AlertmanagerTarget `json:"activeAlertmanagers"`
-}
-
-// AlertmanagerTarget has info on one AM.
-type AlertmanagerTarget struct {
-	URL string `json:"url"`
-}
-
 func (api *API) alertmanagers(r *http.Request) (interface{}, *apiError) {
-	urls := api.alertmanagerRetriever.Alertmanagers()
-	ams := &AlertmanagerDiscovery{ActiveAlertmanagers: make([]*AlertmanagerTarget, len(urls))}
 
-	for i, url := range urls {
-		ams.ActiveAlertmanagers[i] = &AlertmanagerTarget{URL: url.String()}
+	bodys := api.proxyReq(r)
+	var ams AlertmanagerDiscovery
+	for _, body := range bodys {
+		var res alertManagerVals
+		err := json.Unmarshal(body, &res)
+		if err != nil {
+			log.Error(err)
+		}
+		ams.ActiveAlertmanagers = append(ams.ActiveAlertmanagers, res.Data.ActiveAlertmanagers...)
 	}
 
 	return ams, nil
 }
-*/
 
 type targetHash struct {
 	RawTargets []rawTarget
@@ -642,3 +538,73 @@ func documentedType(t model.ValueType) string {
 		return t.String()
 	}
 }
+
+//去重 可能效率不太高
+func (api *API) removeDuplicate(data model.LabelValues) model.LabelValues {
+	seen := make(model.LabelValues, 0, len(data))
+slice:
+	for i, n := range data {
+		if i == 0 {
+			data = data[:0]
+		}
+		for _, t := range seen {
+			if n == t {
+				continue slice
+			}
+		}
+		seen = append(seen, n)
+		data = append(data, n)
+	}
+	return data
+}
+
+//取query和queryRange中的label
+func populateIterators(ctx context.Context, s *promql.EvalStmt) (metric.LabelMatchers, error) {
+	var matchers metric.LabelMatchers
+	promql.Inspect(s.Expr, func(node promql.Node) bool {
+		switch n := node.(type) {
+		case *promql.VectorSelector:
+			log.Info("populate vectorselector")
+			matchers = n.LabelMatchers
+
+		case *promql.MatrixSelector:
+			log.Info("populate metrixSelector")
+			matchers = n.LabelMatchers
+		}
+		return true
+	})
+	return matchers, fmt.Errorf("no Matcheres found")
+}
+
+/*
+func (api *API) targetRelation() {
+		// 这个可以取出__address__和remote prometheus的关系。
+			expr, err := promql.ParseExpr(r.FormValue("query"))
+			if err != nil {
+				return nil, &apiError{errorBadData, err}
+			}
+			if expr.Type() != model.ValVector && expr.Type() != model.ValScalar {
+				return nil, &apiError{errorBadData, fmt.Errorf("invalid expression type %q for range query, must be scalar or instant vector", documentedType(expr.Type()))}
+			}
+
+			thash := api.getTargets()
+			//target与prometheus服务器的分配
+			es := &promql.EvalStmt{
+				Expr:     expr,
+				Start:    start,
+				End:      end,
+				Interval: time.Duration(60 * time.Second),
+			}
+
+			matchers, err := populateIterators(ctx, es)
+			for _, v := range matchers {
+				for _, n := range thash.RawTargets {
+					if v.Match(n.Address) {
+						fmt.Printf("match!! mod: %d, address: %s\n", n.Mod, n.Address)
+						//TODO 从表里查 mod:remoteprometheus对应关系
+						//读出来，插入到新的list中作为需要生成的客户端列表留用
+					}
+				}
+			}
+}
+*/

@@ -117,7 +117,8 @@ type Options struct {
 
 // New initializes a new web Handler.
 func New(o *Options) *Handler {
-	router := route.New(nil)
+	router := route.New()
+
 	cwd, err := os.Getwd()
 
 	if err != nil {

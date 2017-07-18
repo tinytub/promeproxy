@@ -66,10 +66,11 @@
 			"revisionTime": "2017-06-23T10:57:09Z"
 		},
 		{
-			"checksumSHA1": "ZKxETlJdB2XubMrZnXB0FQimVA8=",
+			"checksumSHA1": "DYv6Q1+VfnUVxMwvk5IshAClLvw=",
+			"origin": "github.com/prometheus/prometheus/vendor/github.com/Sirupsen/logrus",
 			"path": "github.com/Sirupsen/logrus",
-			"revision": "10f801ebc38b33738c9d17d50860f484a0988ff5",
-			"revisionTime": "2017-03-17T14:32:14Z"
+			"revision": "43075d0215c94c1f57efeb725a7880e7ff16ae99",
+			"revisionTime": "2017-06-23T10:57:09Z"
 		},
 		{
 			"checksumSHA1": "FDV1HT/HwDJ1G2LPEJG2o/gsWz4=",
@@ -579,34 +580,34 @@
 			"revisionTime": "2017-02-16T18:52:47Z"
 		},
 		{
-			"checksumSHA1": "Wtpzndm/+bdwwNU5PCTfb4oUhc8=",
+			"checksumSHA1": "xfnn0THnqNwjwimeTClsxahYrIo=",
 			"path": "github.com/prometheus/common/expfmt",
-			"revision": "49fee292b27bfff7f354ee0f64e1bc4850462edf",
-			"revisionTime": "2017-02-20T10:38:46Z"
+			"revision": "3e6a7635bac6573d43f49f97b47eb9bda195dba8",
+			"revisionTime": "2017-07-07T05:33:19Z"
 		},
 		{
 			"checksumSHA1": "GWlM3d2vPYyNATtTFgftS10/A9w=",
 			"path": "github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg",
-			"revision": "49fee292b27bfff7f354ee0f64e1bc4850462edf",
-			"revisionTime": "2017-02-20T10:38:46Z"
+			"revision": "3e6a7635bac6573d43f49f97b47eb9bda195dba8",
+			"revisionTime": "2017-07-07T05:33:19Z"
 		},
 		{
-			"checksumSHA1": "ZA4MLHNAP905WiAOLy4BBzmcuxM=",
+			"checksumSHA1": "esljoY35OOHttvpjBctA6WGZc70=",
 			"path": "github.com/prometheus/common/log",
-			"revision": "49fee292b27bfff7f354ee0f64e1bc4850462edf",
-			"revisionTime": "2017-02-20T10:38:46Z"
+			"revision": "3e6a7635bac6573d43f49f97b47eb9bda195dba8",
+			"revisionTime": "2017-07-07T05:33:19Z"
 		},
 		{
-			"checksumSHA1": "0LL9u9tfv1KPBjNEiMDP6q7lpog=",
+			"checksumSHA1": "3VoqH7TFfzA6Ds0zFzIbKCUvBmw=",
 			"path": "github.com/prometheus/common/model",
-			"revision": "49fee292b27bfff7f354ee0f64e1bc4850462edf",
-			"revisionTime": "2017-02-20T10:38:46Z"
+			"revision": "3e6a7635bac6573d43f49f97b47eb9bda195dba8",
+			"revisionTime": "2017-07-07T05:33:19Z"
 		},
 		{
-			"checksumSHA1": "ZbbESWBHHcPUJ/A5yrzKhTHuPc8=",
+			"checksumSHA1": "9aDxDuzZt1l7FQJ9qpn2kPcF7NU=",
 			"path": "github.com/prometheus/common/route",
-			"revision": "49fee292b27bfff7f354ee0f64e1bc4850462edf",
-			"revisionTime": "2017-02-20T10:38:46Z"
+			"revision": "3e6a7635bac6573d43f49f97b47eb9bda195dba8",
+			"revisionTime": "2017-07-07T05:33:19Z"
 		},
 		{
 			"checksumSHA1": "cD4xn1qxbkiuXqUExpdnDroCTrY=",
@@ -794,6 +795,12 @@
 			"path": "github.com/samuel/go-zookeeper/zk",
 			"revision": "43075d0215c94c1f57efeb725a7880e7ff16ae99",
 			"revisionTime": "2017-06-23T10:57:09Z"
+		},
+		{
+			"checksumSHA1": "fabVNshbE6WKqfO9/ymL8JGFq+k=",
+			"path": "github.com/sirupsen/logrus",
+			"revision": "10f801ebc38b33738c9d17d50860f484a0988ff5",
+			"revisionTime": "2017-03-17T14:32:14Z"
 		},
 		{
 			"checksumSHA1": "YuPBOVkkE3uuBh4RcRUTF0n+frs=",
