@@ -24,9 +24,12 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/storage/remote"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/storage/local"
 	"github.com/tinytub/promeproxy/retrieval"
+	"github.com/tinytub/promeproxy/storage"
+	"github.com/tinytub/promeproxy/storage/fanin"
+	"github.com/tinytub/promeproxy/storage/remote"
 	"github.com/tinytub/promeproxy/web"
 )
 
@@ -71,7 +74,6 @@ func (s *mockSyncer) Sync(tgs []*config.TargetGroup) {
 }
 
 func main() {
-
 	if err := parse(os.Args[1:]); err != nil {
 		log.Error(err)
 	}
@@ -79,13 +81,25 @@ func main() {
 		sampleAppender = storage.Fanout{}
 		reloadables    []Reloadable
 	)
+	var localStorage local.Storage
+	localStorage = &local.NoopStorage{}
 	remoteAppender := &remote.Writer{}
+	remoteReader := &remote.Reader{}
 	sampleAppender = append(sampleAppender, remoteAppender)
+
+	reloadables = append(reloadables, remoteAppender, remoteReader)
+
+	queryable := fanin.Queryable{
+		Local:  localStorage,
+		Remote: remoteReader,
+	}
 	var (
 		targetManager  = retrieval.NewTargetManager(sampleAppender, log.Base())
 		ctx, cancelCtx = context.WithCancel(context.Background())
+		queryEngine    = promql.NewEngine(queryable, &cfg.queryEngine)
 	)
 
+	cfg.web.QueryEngine = queryEngine
 	cfg.web.TargetManager = targetManager
 	cfg.web.Context = ctx
 	cfg.web.Flags = map[string]string{}

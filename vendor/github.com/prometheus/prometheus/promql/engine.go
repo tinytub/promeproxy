@@ -369,6 +369,7 @@ func (ng *Engine) NewRangeQuery(qs string, start, end model.Time, interval time.
 }
 
 func (ng *Engine) newQuery(expr Expr, start, end model.Time, interval time.Duration) *query {
+	log.Info(expr.Type())
 	es := &EvalStmt{
 		Expr:     expr,
 		Start:    start,
@@ -578,7 +579,9 @@ func (ng *Engine) populateIterators(ctx context.Context, querier local.Querier, 
 					s.Start.Add(-n.Offset),
 					StalenessDelta,
 					n.LabelMatchers...,
+				//直接传查询条件 ？
 				)
+				log.Info(n.iterators)
 			} else {
 				n.iterators, queryErr = querier.QueryRange(
 					ctx,
@@ -586,6 +589,7 @@ func (ng *Engine) populateIterators(ctx context.Context, querier local.Querier, 
 					s.End.Add(-n.Offset),
 					n.LabelMatchers...,
 				)
+				log.Info(n.iterators)
 			}
 			if queryErr != nil {
 				return false
@@ -597,6 +601,7 @@ func (ng *Engine) populateIterators(ctx context.Context, querier local.Querier, 
 				s.End.Add(-n.Offset),
 				n.LabelMatchers...,
 			)
+			log.Info(n.iterators)
 			if queryErr != nil {
 				return false
 			}
@@ -739,10 +744,20 @@ func (ev *evaluator) eval(expr Expr) model.Value {
 
 	switch e := expr.(type) {
 	case *AggregateExpr:
+		//fmt.Println(expr)
+		//fmt.Println(e.Expr)
+		//log.Info("into AggregateExpr")
 		vector := ev.evalVector(e.Expr)
+		//fmt.Println("op: ", e.Op)
+		//fmt.Println("grouping: ", e.Grouping)
+		//fmt.Println("without: ", e.Without)
+		//fmt.Println("keepCommonLabels: ", e.KeepCommonLabels)
+		//fmt.Println("param: ", e.Param)
+		//fmt.Println("vector: ", vector)
 		return ev.aggregation(e.Op, e.Grouping, e.Without, e.KeepCommonLabels, e.Param, vector)
 
 	case *BinaryExpr:
+		log.Info("into BinaryExpr")
 		lhs := ev.evalOneOf(e.LHS, model.ValScalar, model.ValVector)
 		rhs := ev.evalOneOf(e.RHS, model.ValScalar, model.ValVector)
 
@@ -772,21 +787,27 @@ func (ev *evaluator) eval(expr Expr) model.Value {
 		}
 
 	case *Call:
+		log.Info("into Call")
 		return e.Func.Call(ev, e.Args)
 
 	case *MatrixSelector:
+		log.Info("into MetrixSelector")
 		return ev.matrixSelector(e)
 
 	case *NumberLiteral:
+		log.Info("into NumberLiteral")
 		return &model.Scalar{Value: e.Val, Timestamp: ev.Timestamp}
 
 	case *ParenExpr:
+		log.Info("into ParenExpr")
 		return ev.eval(e.Expr)
 
 	case *StringLiteral:
+		log.Info("into StringLiteral")
 		return &model.String{Value: e.Val, Timestamp: ev.Timestamp}
 
 	case *UnaryExpr:
+		log.Info("into UnaryExpr")
 		se := ev.evalOneOf(e.Expr, model.ValScalar, model.ValVector)
 		// Only + and - are possible operators.
 		if e.Op == itemSUB {
@@ -802,6 +823,7 @@ func (ev *evaluator) eval(expr Expr) model.Value {
 		return se
 
 	case *VectorSelector:
+		//log.Info("into vVectorSelector")
 		return ev.vectorSelector(e)
 	}
 	panic(fmt.Errorf("unhandled expression of type: %T", expr))
@@ -822,6 +844,7 @@ func (ev *evaluator) vectorSelector(node *VectorSelector) vector {
 			Timestamp: ev.Timestamp,
 		})
 	}
+	//log.Info(vec)
 	return vec
 }
 

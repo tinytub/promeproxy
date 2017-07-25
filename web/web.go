@@ -32,6 +32,7 @@ import (
 	"golang.org/x/net/netutil"
 
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/tinytub/promeproxy/retrieval"
 	api_v1 "github.com/tinytub/promeproxy/web/api/v1"
 )
@@ -41,6 +42,7 @@ var localhostRepresentations = []string{"127.0.0.1", "localhost"}
 // Handler serves various HTTP endpoints of the Prometheus server
 type Handler struct {
 	targetManager *retrieval.TargetManager
+	queryEngine   *promql.Engine
 	context       context.Context
 	/*
 		ruleManager   *rules.Manager
@@ -92,7 +94,8 @@ type PrometheusVersion struct {
 
 // Options for the web Handler.
 type Options struct {
-	Context context.Context
+	Context     context.Context
+	QueryEngine *promql.Engine
 	/*
 		Storage       local.Storage
 		QueryEngine   *promql.Engine
@@ -137,9 +140,10 @@ func New(o *Options) *Handler {
 
 		context:       o.Context,
 		targetManager: o.TargetManager,
+		queryEngine:   o.QueryEngine,
+		apiV1:         api_v1.NewAPI(o.QueryEngine, o.TargetManager),
 
-		apiV1: api_v1.NewAPI(o.TargetManager),
-		now:   model.Now,
+		now: model.Now,
 	}
 
 	if o.RoutePrefix != "/" {

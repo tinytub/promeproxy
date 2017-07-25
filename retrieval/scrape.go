@@ -24,6 +24,8 @@ import (
 	"github.com/prometheus/prometheus/util/httputil"
 )
 
+//zhaopeng-iri 删掉了所有的获取target并开启scrap操作的动作,只获取scrub
+
 type scrapePool struct {
 	appender storage.SampleAppender
 	ctx      context.Context
@@ -37,7 +39,6 @@ type scrapePool struct {
 }
 
 func (sp *scrapePool) Sync(tgs []*config.TargetGroup) {
-	//start := time.Now()
 
 	var all []*Target
 	for _, tg := range tgs {
@@ -51,14 +52,8 @@ func (sp *scrapePool) Sync(tgs []*config.TargetGroup) {
 	sp.sync(all)
 
 }
+
 func newScrapePool(ctx context.Context, cfg *config.ScrapeConfig, app storage.SampleAppender) *scrapePool {
-	/*
-		client, err := httputil.NewClientFromConfig(cfg.HTTPClientConfig)
-		if err != nil {
-			// Any errors that could occur here should be caught during config validation.
-			log.Errorf("Error creating HTTP client for job %q: %s", cfg.JobName, err)
-		}
-	*/
 	return &scrapePool{
 		appender: app,
 		config:   cfg,
@@ -85,20 +80,7 @@ func (sp *scrapePool) sync(targets []*Target) {
 		uniqueTargets[hash] = struct{}{}
 
 		if _, ok := sp.targets[hash]; !ok {
-			/*
-				s := &targetScraper{
-					Target:  t,
-					client:  sp.client,
-					timeout: timeout,
-				}
-
-				l := sp.newLoop(sp.ctx, s, sp.appender, t.Labels(), sp.config)
-			*/
-
 			sp.targets[hash] = t
-			//sp.loops[hash] = l
-
-			//go l.run(interval, timeout, nil)
 		}
 	}
 
@@ -120,7 +102,6 @@ func (sp *scrapePool) sync(targets []*Target) {
 // but all scrape loops are restarted with the new scrape configuration.
 // This method returns after all scrape loops that were stopped have fully terminated.
 func (sp *scrapePool) reload(cfg *config.ScrapeConfig) {
-	//start := time.Now()
 
 	sp.mtx.Lock()
 	defer sp.mtx.Unlock()
@@ -133,40 +114,4 @@ func (sp *scrapePool) reload(cfg *config.ScrapeConfig) {
 	sp.config = cfg
 	sp.client = client
 
-	//var (
-	//wg sync.WaitGroup
-	//interval = time.Duration(sp.config.ScrapeInterval)
-	//timeout  = time.Duration(sp.config.ScrapeTimeout)
-	//)
-
-	/*
-		for fp, oldLoop := range sp.loops {
-			var (
-				t = sp.targets[fp]
-				s = &targetScraper{
-					Target:  t,
-					client:  sp.client,
-					timeout: timeout,
-				}
-				newLoop = sp.newLoop(sp.ctx, s, sp.appender, t.Labels(), sp.config)
-			)
-			wg.Add(1)
-
-			go func(oldLoop, newLoop loop) {
-				oldLoop.stop()
-				wg.Done()
-
-				go newLoop.run(interval, timeout, nil)
-			}(oldLoop, newLoop)
-
-			sp.loops[fp] = newLoop
-		}
-	*/
-
-	//wg.Wait()
-	/*
-		targetReloadIntervalLength.WithLabelValues(interval.String()).Observe(
-			time.Since(start).Seconds(),
-		)
-	*/
 }

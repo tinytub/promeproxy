@@ -83,12 +83,13 @@ type apiFunc func(r *http.Request) (interface{}, *apiError)
 
 type API struct {
 	targetRetriever targetRetriever
-
-	now func() model.Time
+	QueryEngine     *promql.Engine
+	now             func() model.Time
 }
 
-func NewAPI(tr targetRetriever) *API {
+func NewAPI(qe *promql.Engine, tr targetRetriever) *API {
 	return &API{
+		QueryEngine:     qe,
 		targetRetriever: tr,
 		now:             model.Now,
 	}
@@ -135,7 +136,6 @@ type queryData struct {
 func (api *API) options(r *http.Request) (interface{}, *apiError) {
 	return nil, nil
 }
-
 func (api *API) query(r *http.Request) (interface{}, *apiError) {
 	var ts model.Time
 	if t := r.FormValue("time"); t != "" {
@@ -159,11 +159,27 @@ func (api *API) query(r *http.Request) (interface{}, *apiError) {
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-	log.Info(r.FormValue("query"), ts)
 
+	qry, err := api.QueryEngine.NewInstantQuery(r.FormValue("query"), ts)
+	if err != nil {
+		return nil, &apiError{errorBadData, err}
+	}
+
+	res := qry.Exec(ctx)
+	if res.Err != nil {
+		switch res.Err.(type) {
+		case promql.ErrQueryCanceled:
+			return nil, &apiError{errorCanceled, res.Err}
+		case promql.ErrQueryTimeout:
+			return nil, &apiError{errorTimeout, res.Err}
+		case promql.ErrStorage:
+			return nil, &apiError{errorInternal, res.Err}
+		}
+		return nil, &apiError{errorExec, res.Err}
+	}
 	return &queryData{
-		ResultType: 0,
-		Result:     nil,
+		ResultType: res.Value.Type(),
+		Result:     res.Value,
 	}, nil
 }
 
@@ -208,32 +224,56 @@ func (api *API) queryRange(r *http.Request) (interface{}, *apiError) {
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-
-	mat := matrix{}
-
-	bodys := api.proxyReq(r)
-
-	var wg sync.WaitGroup
-	for _, body := range bodys {
-		var res *queryRes
-		wg.Add(1)
-		go func(body []byte) {
-			err = json.Unmarshal(body, &res)
-			if err != nil {
-				fmt.Println(err)
-			}
-
-			mat = append(mat, res.Data.Result...)
-			wg.Done()
-		}(body)
+	qry, err := api.QueryEngine.NewRangeQuery(r.FormValue("query"), start, end, step)
+	if err != nil {
+		return nil, &apiError{errorBadData, err}
 	}
-	wg.Wait()
 
-	final := mat.value()
+	res := qry.Exec(ctx)
+	if res.Err != nil {
+		switch res.Err.(type) {
+		case promql.ErrQueryCanceled:
+			return nil, &apiError{errorCanceled, res.Err}
+		case promql.ErrQueryTimeout:
+			return nil, &apiError{errorTimeout, res.Err}
+		}
+		return nil, &apiError{errorExec, res.Err}
+	}
 
+	// zhaopeng-iri 走原生query方法取裸数据，并在本端进行聚合和计算处理，纯proxy方式废弃
+	/*
+			api.exprTest(r)
+
+			mat := matrix{}
+
+			bodys := api.proxyReq(r)
+
+			var wg sync.WaitGroup
+			for _, body := range bodys {
+				var res *queryRes
+				wg.Add(1)
+				go func(body []byte) {
+					err = json.Unmarshal(body, &res)
+					if err != nil {
+						fmt.Println(err)
+					}
+
+					mat = append(mat, res.Data.Result...)
+					wg.Done()
+				}(body)
+			}
+			wg.Wait()
+
+			final := mat.value()
+
+		return &queryData{
+			ResultType: final.Type(),
+			Result:     final,
+		}, nil
+	*/
 	return &queryData{
-		ResultType: final.Type(),
-		Result:     final,
+		ResultType: res.Value.Type(),
+		Result:     res.Value,
 	}, nil
 }
 
@@ -245,6 +285,7 @@ func (api *API) proxyReq(r *http.Request) [][]byte {
 		wg.Add(1)
 		go func(r *http.Request, l model.LabelValue) {
 			url := "http://" + string(l) + r.RequestURI
+			log.Info("request :", url)
 			client, _ := utils.NewClientForTimeOut()
 			request, _ := http.NewRequest("GET", url, strings.NewReader(""))
 
@@ -481,15 +522,28 @@ func respondError(w http.ResponseWriter, apiErr *apiError, data interface{}) {
 	w.Write(b)
 }
 
+const (
+	minimumTick = time.Millisecond
+	// second is the Time duration equivalent to one second.
+	second = int64(time.Second / minimumTick)
+	// The number of nanoseconds per minimum tick.
+	nanosPerTick = int64(minimumTick / time.Nanosecond)
+)
+
 func parseTime(s string) (model.Time, error) {
 	if t, err := strconv.ParseFloat(s, 64); err == nil {
+		log.Info(t)
 		ts := t * float64(time.Second)
+		log.Info(ts)
 		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
 			return 0, fmt.Errorf("cannot parse %q to a valid timestamp. It overflows int64", s)
 		}
+		log.Info(int64(ts))
+		log.Info(nanosPerTick)
 		return model.TimeFromUnixNano(int64(ts)), nil
 	}
 	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		log.Info(t)
 		return model.TimeFromUnixNano(t.UnixNano()), nil
 	}
 	return 0, fmt.Errorf("cannot parse %q to a valid timestamp", s)
@@ -521,7 +575,7 @@ func sum64(hash [md5.Size]byte) uint64 {
 }
 
 /*
-//返回内部类型
+//返回易读内部类型
 func documentedType(t model.ValueType) string {
 	switch t.String() {
 	case "vector":
@@ -572,34 +626,48 @@ func populateIterators(ctx context.Context, s *promql.EvalStmt) (metric.LabelMat
 	return matchers, fmt.Errorf("no Matcheres found")
 }
 
-func (api *API) targetRelation() {
-		// 这个可以取出__address__和remote prometheus的关系。
-			expr, err := promql.ParseExpr(r.FormValue("query"))
-			if err != nil {
-				return nil, &apiError{errorBadData, err}
-			}
-			if expr.Type() != model.ValVector && expr.Type() != model.ValScalar {
-				return nil, &apiError{errorBadData, fmt.Errorf("invalid expression type %q for range query, must be scalar or instant vector", documentedType(expr.Type()))}
-			}
+func (api *API) targetRelation(r *http.Request) {
+	// 这个可以取出__address__和remote prometheus的关系。
+	expr, err := promql.ParseExpr(r.FormValue("query"))
+	if err != nil {
+		return nil, &apiError{errorBadData, err}
+	}
+	if expr.Type() != model.ValVector && expr.Type() != model.ValScalar {
+		return nil, &apiError{errorBadData, fmt.Errorf("invalid expression type %q for range query, must be scalar or instant vector", documentedType(expr.Type()))}
+	}
 
-			thash := api.getTargets()
-			//target与prometheus服务器的分配
-			es := &promql.EvalStmt{
-				Expr:     expr,
-				Start:    start,
-				End:      end,
-				Interval: time.Duration(60 * time.Second),
-			}
+	thash := api.getTargets()
+	//target与prometheus服务器的分配
+	es := &promql.EvalStmt{
+		Expr:     expr,
+		Start:    start,
+		End:      end,
+		Interval: time.Duration(60 * time.Second),
+	}
 
-			matchers, err := populateIterators(ctx, es)
-			for _, v := range matchers {
-				for _, n := range thash.RawTargets {
-					if v.Match(n.Address) {
-						fmt.Printf("match!! mod: %d, address: %s\n", n.Mod, n.Address)
-						//TODO 从表里查 mod:remoteprometheus对应关系
-						//读出来，插入到新的list中作为需要生成的客户端列表留用
-					}
-				}
+	matchers, err := populateIterators(ctx, es)
+	for _, v := range matchers {
+		for _, n := range thash.RawTargets {
+			if v.Match(n.Address) {
+				fmt.Printf("match!! mod: %d, address: %s\n", n.Mod, n.Address)
+				//TODO 从表里查 mod:remoteprometheus对应关系
+				//读出来，插入到新的list中作为需要生成的客户端列表留用
 			}
+		}
+	}
 }
 */
+func (api *API) exprTest(r *http.Request) {
+	// 这个可以取出__address__和remote prometheus的关系。
+	expr, err := promql.ParseExpr(r.FormValue("query"))
+	if err != nil {
+		log.Info(&apiError{errorBadData, err})
+	}
+	if expr.Type() != model.ValVector && expr.Type() != model.ValScalar {
+		log.Info("wrong expr type")
+	}
+	log.Info(expr.Type())
+	log.Info(expr.String())
+	//qry, err := api.QueryEngine.NewRangeQuery(r.FormValue("query"), start, end, step)
+
+}

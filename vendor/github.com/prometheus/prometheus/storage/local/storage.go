@@ -586,6 +586,7 @@ func (s *MemorySeriesStorage) QueryRange(ctx context.Context, from, through mode
 		return nil, nil
 	}
 	fpSeriesPairs, err := s.seriesForLabelMatchers(from, through, matchers...)
+	log.Info(fpSeriesPairs)
 	if err != nil {
 		return nil, err
 	}
@@ -595,6 +596,7 @@ func (s *MemorySeriesStorage) QueryRange(ctx context.Context, from, through mode
 		it := s.preloadChunksForRange(pair, from, through)
 		iterators = append(iterators, it)
 	}
+	log.Info(iterators)
 	return iterators, nil
 }
 
@@ -745,7 +747,9 @@ func (s *MemorySeriesStorage) seriesForLabelMatchers(
 	from, through model.Time,
 	matchers ...*metric.LabelMatcher,
 ) ([]fingerprintSeriesPair, error) {
+	//候选数据和待检查的matcher
 	candidateFPs, matchersToCheck, err := s.candidateFPsForLabelMatchers(matchers...)
+	log.Info(candidateFPs, matchersToCheck)
 	if err != nil {
 		return nil, err
 	}
@@ -755,6 +759,7 @@ FPLoop:
 	for fp := range candidateFPs {
 		s.fpLocker.Lock(fp)
 		series := s.seriesForRange(fp, from, through)
+		log.Info(series)
 		s.fpLocker.Unlock(fp)
 
 		if series == nil {

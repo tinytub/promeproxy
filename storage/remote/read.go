@@ -14,9 +14,10 @@
 package remote
 
 import (
-	"qim/common/log"
 	"sync"
 	"time"
+
+	"github.com/prometheus/common/log"
 
 	"github.com/prometheus/common/model"
 	"golang.org/x/net/context"
@@ -80,7 +81,6 @@ type querier struct {
 }
 
 func (q *querier) QueryRange(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
-	log.Info("remote query range")
 	return MatrixToIterators(q.read(ctx, from, through, matchers))
 }
 
@@ -89,10 +89,9 @@ func (q *querier) QueryInstant(ctx context.Context, ts model.Time, stalenessDelt
 }
 
 func (q *querier) read(ctx context.Context, from, through model.Time, matchers metric.LabelMatchers) (model.Matrix, error) {
-	m, added := q.addExternalLabels(matchers)
 	log.Info(matchers)
+	m, added := q.addExternalLabels(matchers)
 	res, err := q.client.Read(ctx, from, through, m)
-	log.Info(res)
 	if err != nil {
 		return nil, err
 	}

@@ -22,21 +22,25 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+	"time"
 	"unicode"
 
 	govalidator "github.com/asaskevich/govalidator"
 	"github.com/prometheus/common/log"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/tinytub/promeproxy/web"
 )
 
 // cfg contains immutable configuration parameters for a running Prometheus
 // server. It is populated by its flag set.
 var cfg = struct {
-	fs            *flag.FlagSet
-	web           web.Options
-	printVersion  bool
-	configFile    string
-	prometheusURL string
+	fs                 *flag.FlagSet
+	localStorageEngine string
+	queryEngine        promql.EngineOptions
+	web                web.Options
+	printVersion       bool
+	configFile         string
+	prometheusURL      string
 }{}
 
 // Value type for flags that are now unused, but which are kept around to
@@ -89,6 +93,26 @@ func init() {
 		&cfg.web.RoutePrefix, "web.route-prefix", "",
 		"Prefix for the internal routes of web endpoints. Defaults to path of -web.external-url.",
 	)
+	// Storage
+	cfg.fs.StringVar(
+		&cfg.localStorageEngine, "storage.local.engine", "remoteprometheus",
+		"Local storage engine. Supported values are: 'remoteprometheus' (full local storage with on-disk persistence) and 'none' (no local storage).",
+	)
+
+	// Query engine.
+	cfg.fs.DurationVar(
+		&promql.StalenessDelta, "query.staleness-delta", promql.StalenessDelta,
+		"Staleness delta allowance during expression evaluations.",
+	)
+	cfg.fs.DurationVar(
+		&cfg.queryEngine.Timeout, "query.timeout", 2*time.Minute,
+		"Maximum time a query may take before being aborted.",
+	)
+	cfg.fs.IntVar(
+		&cfg.queryEngine.MaxConcurrentQueries, "query.max-concurrency", 20,
+		"Maximum number of queries executed concurrently.",
+	)
+
 	// Flags from the log package have to be added explicitly to our custom flag set.
 	log.AddFlags(cfg.fs)
 }
