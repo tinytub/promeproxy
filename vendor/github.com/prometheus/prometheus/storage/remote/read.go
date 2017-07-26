@@ -14,7 +14,7 @@
 package remote
 
 import (
-	"qim/common/log"
+	"fmt"
 	"sync"
 	"time"
 
@@ -80,7 +80,6 @@ type querier struct {
 }
 
 func (q *querier) QueryRange(ctx context.Context, from, through model.Time, matchers ...*metric.LabelMatcher) ([]local.SeriesIterator, error) {
-	log.Info("remote query range")
 	return MatrixToIterators(q.read(ctx, from, through, matchers))
 }
 
@@ -90,15 +89,35 @@ func (q *querier) QueryInstant(ctx context.Context, ts model.Time, stalenessDelt
 
 func (q *querier) read(ctx context.Context, from, through model.Time, matchers metric.LabelMatchers) (model.Matrix, error) {
 	m, added := q.addExternalLabels(matchers)
-	log.Info(matchers)
 	res, err := q.client.Read(ctx, from, through, m)
-	log.Info(res)
+	if err != nil {
+		return nil, err
+	}
+	removeLabels(res, added)
+	err = validateLabelsAndMetricName(res)
 	if err != nil {
 		return nil, err
 	}
 
-	removeLabels(res, added)
 	return res, err
+}
+
+// validateLabelsAndMetricName validates the label names/values and metric names returned from remote read.
+func validateLabelsAndMetricName(res model.Matrix) error {
+	for _, r := range res {
+		if !model.IsValidMetricName(r.Metric[model.MetricNameLabel]) {
+			return fmt.Errorf("Invalid metric name: %v", r.Metric[model.MetricNameLabel])
+		}
+		for name, value := range r.Metric {
+			if !name.IsValid() {
+				return fmt.Errorf("Invalid label name: %v", name)
+			}
+			if !value.IsValid() {
+				return fmt.Errorf("Invalid label value: %v", value)
+			}
+		}
+	}
+	return nil
 }
 
 // addExternalLabels adds matchers for each external label. External labels

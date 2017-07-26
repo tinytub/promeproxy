@@ -248,7 +248,7 @@ type query struct {
 	stmt Statement
 	// Timer stats for the query execution.
 	stats *stats.TimerGroup
-	// Cancelation function for the query.
+	// Cancellation function for the query.
 	cancel func()
 
 	// The engine against which the query is executed.
@@ -574,14 +574,14 @@ func (ng *Engine) populateIterators(ctx context.Context, querier local.Querier, 
 		switch n := node.(type) {
 		case *VectorSelector:
 			if s.Start.Equal(s.End) {
+				//TODO 给Query**函数添加个interval参数传step
 				n.iterators, queryErr = querier.QueryInstant(
 					ctx,
 					s.Start.Add(-n.Offset),
 					StalenessDelta,
 					n.LabelMatchers...,
-				//直接传查询条件 ？
 				)
-				log.Info(n.iterators)
+				//log.Info(n.iterators)
 			} else {
 				n.iterators, queryErr = querier.QueryRange(
 					ctx,
@@ -589,7 +589,7 @@ func (ng *Engine) populateIterators(ctx context.Context, querier local.Querier, 
 					s.End.Add(-n.Offset),
 					n.LabelMatchers...,
 				)
-				log.Info(n.iterators)
+				//log.Info(n.iterators)
 			}
 			if queryErr != nil {
 				return false
@@ -601,7 +601,7 @@ func (ng *Engine) populateIterators(ctx context.Context, querier local.Querier, 
 				s.End.Add(-n.Offset),
 				n.LabelMatchers...,
 			)
-			log.Info(n.iterators)
+			//log.Info(n.iterators)
 			if queryErr != nil {
 				return false
 			}
@@ -737,7 +737,7 @@ func (ev *evaluator) Eval(expr Expr) (v model.Value, err error) {
 // eval evaluates the given expression as the given AST expression node requires.
 func (ev *evaluator) eval(expr Expr) model.Value {
 	// This is the top-level evaluation method.
-	// Thus, we check for timeout/cancelation here.
+	// Thus, we check for timeout/cancellation here.
 	if err := contextDone(ev.ctx, "expression evaluation"); err != nil {
 		ev.error(err)
 	}
