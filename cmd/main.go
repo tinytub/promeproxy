@@ -23,6 +23,7 @@ import (
 
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage/local"
@@ -32,6 +33,10 @@ import (
 	"github.com/tinytub/promeproxy/storage/remote"
 	"github.com/tinytub/promeproxy/web"
 )
+
+func main() {
+	os.Exit(Main())
+}
 
 type status string
 
@@ -73,9 +78,14 @@ func (s *mockSyncer) Sync(tgs []*config.TargetGroup) {
 	}
 }
 
-func main() {
+func Main() int {
 	if err := parse(os.Args[1:]); err != nil {
 		log.Error(err)
+		return 2
+	}
+	if cfg.printVersion {
+		fmt.Fprintln(os.Stdout, version.Print("prometheus"))
+		return 0
 	}
 	var (
 		sampleAppender = storage.Fanout{}
@@ -112,6 +122,7 @@ func main() {
 	reloadables = append(reloadables, targetManager, webHandler)
 	if err := reloadConfig(cfg.configFile, reloadables...); err != nil {
 		log.Errorf("Error loading config: %s", err)
+		return 1
 	}
 
 	hup := make(chan os.Signal)
@@ -149,7 +160,7 @@ func main() {
 	case err := <-webHandler.ListenError():
 		log.Errorln("Error starting web server, exiting gracefully:", err)
 	}
-
+	return 0
 }
 
 type Reloadable interface {

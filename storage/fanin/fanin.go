@@ -15,6 +15,7 @@ package fanin
 
 import (
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/prometheus/common/log"
@@ -95,23 +96,25 @@ func (q querier) query(ctx context.Context, qFn func(q local.Querier) ([]local.S
 		fpToIt[fp] = &mergeIterator{local: it}
 	}
 
-	/* zhaopeng-iri
 	//map需要枷锁，还是算了。。。。
-		var wg sync.WaitGroup
-		wg.Add(len(q.remotes))
-		for _, q := range q.remotes {
-			go func(qu local.Querier) {
-				its, _ := qFn(qu)
-					if err != nil {
-						return nil, err
-					}
-				log.Info(its)
-				mergeIterators(fpToIt, its)
-				wg.Done()
-			}(q)
-		}
-		wg.Wait()
-	*/
+	//zhaopeng-iri 没加锁，有fingerprint 似乎没啥问题
+	var wg sync.WaitGroup
+	wg.Add(len(q.remotes))
+	for _, q := range q.remotes {
+		go func(qu local.Querier) {
+			its, _ := qFn(qu)
+			/*
+				if err != nil {
+					return nil, err
+				}
+			*/
+			//log.Info(its)
+			mergeIterators(fpToIt, its)
+			wg.Done()
+		}(q)
+	}
+	wg.Wait()
+	/* zhaopeng-iri
 	for _, q := range q.remotes {
 		its, err := qFn(q)
 		log.Info(its)
@@ -120,6 +123,7 @@ func (q querier) query(ctx context.Context, qFn func(q local.Querier) ([]local.S
 		}
 		mergeIterators(fpToIt, its)
 	}
+	*/
 
 	its := make([]local.SeriesIterator, 0, len(fpToIt))
 	for _, it := range fpToIt {
@@ -231,6 +235,7 @@ func mergeIterators(fpToIt map[model.Fingerprint]*mergeIterator, its []local.Ser
 	for _, it := range its {
 		fp := it.Metric().Metric.Fingerprint()
 		if fpIts, ok := fpToIt[fp]; !ok {
+			//log.Info("no fp!", fp)
 			fpToIt[fp] = &mergeIterator{remote: []local.SeriesIterator{it}}
 		} else {
 			fpToIt[fp].remote = append(fpIts.remote, it)

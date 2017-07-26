@@ -151,15 +151,19 @@ func New(o *Options) *Handler {
 		router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, o.RoutePrefix, http.StatusFound)
 		})
+		fmt.Println("prepend register /")
 		router = router.WithPrefix(o.RoutePrefix)
 	}
 
 	//instrh := prometheus.InstrumentHandler
 	//instrf := prometheus.InstrumentHandlerFunc
+	fmt.Println("routeprefix:", o.RoutePrefix)
 
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, path.Join(o.ExternalURL.Path, "/graph"), http.StatusFound)
 	})
+
+	//router.Get(o.MetricsPath, prometheus.Handler().ServeHTTP)
 
 	/*
 		router.Get("/alerts", instrf("alerts", h.alerts))
@@ -173,7 +177,6 @@ func New(o *Options) *Handler {
 
 		router.Get("/heap", instrf("heap", dumpHeap))
 
-		router.Get(o.MetricsPath, prometheus.Handler().ServeHTTP)
 
 		router.Get("/federate", instrh("federate", httputil.CompressionHandler{
 			Handler: http.HandlerFunc(h.federation),
